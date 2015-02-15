@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+# encoding: utf-8
+
+'''A tool to generate multiple pkginfo files
+from a file containing the output of repoutil --list-branch.'''
+
+import re
+import argparse
+import subprocess
+from collections import deque
+
+REPOUTIL = '/usr/local/reposado/code/repoutil'
+MAKEPKGINFO = '/usr/local/munki/makepkginfo'
+
+def get_product_id(line, delim_regex='  +'):
+    '''Chop line into elements, return first element.'''
+    
+    line = line.rstrip()
+    elements = re.split(delim_regex, line)
+    return elements[0]
+
+
+def get_product_info(prod_id):
+    '''Call repoutil --product-info prod_id and return its
+    content.'''
+
+    args_list = [REPOUTIL, '--product-info', prod_id]
+    result = call_subprocess(args_list)
+    return result
+
+def product_info_to_dict(product_info):
+    '''Turn a product_info string into a dict.'''
+
+    info_array = product_info['stdout'].split('\n')
+    split_array = []
+    for x in info_array:
+        x = split_n_trim(x)
+        if x:
+            split_array.append(x)
+    info_dict = dict(split_array)
+    return info_dict
+
+
+def product_info_to_args(product_info):
+    '''Turn a product info string into a list of
+    arguments for makepkginfo'''
+    
+    info_dict = product_info_to_dict(product_info)
+    args_dict = args.__dict__
+    
+    restart = info_dict.get('RestartNeeded', 'No')
+    if 'Yes' in restart:
+        args_dict['RestartAction'] = 'RequireRestart'
+    else:
+        args_dict['RestartAction'] = 'None'
+
+    dname = info_dict.get('Title', 'Apple Update')
+    args_dict['displayname'] = dname
+
+    vers = info_dict.get('Version', None)
+    size = info_dict.get('Size', None)
+    date = info_dict.get('Post Date', None)
+    if date:
+        date = date.split()[0]
+    desc_list = [x for x in [dname, vers, size, date] if x]
+    args_dict['description'] = '\n'.join([dname, 'version: ' + vers,
+            'size: ' + size, 'released: ' + date])
+    
+    args_dict['apple_update'] = info_dict.get('Product', None) 
+    
+    args_dict.pop('ifile',None)
+    args_list = [MAKEPKGINFO]
+    for k, v in args_dict.items():
+        if not v:
+            continue
+        if 'catalog' in k:
+            for c in v:
+                args_list.append("--{}={}".format(k, c))
+            continue
+        if 'blocking_application' in k:
+            for ba in v:
+                args_list.append("--{}={}".format(k, v))
+            continue
+        if 'unattended_install' in k:
+            if 'Yes' in info_dict.get('RestartNeeded'):
+                continue
+            else:
+                args_list.append("--{}".format(k))
+                continue
+        args_list.append("--{}={}".format(k, v))
+    return args_list
+
+
+def split_n_trim(string, delim=': +'):
+    split_up = re.split(delim, string)
+    output = None
+    if len(split_up) == 2:
+        output = (
+                split_up[0].lstrip().rstrip(),
+                split_up[1].lstrip().rstrip())
+    return output
+
+
+def call_subprocess(args_list):
+    '''Calls subprocess.Popen(args_list) and 
+    returns a dict of the exit code and results.'''
+
+    sub_p = subprocess.Popen(args_list,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+    stdout, stderr = sub_p.communicate()
+    exit_code = sub_p.returncode
+
+    return {'stdout': stdout,
+            'stderr': stderr,
+            'exit_code': exit_code}
+
+
+def write_pkginfo(product_id, pkginfo_output):
+    '''Write the output of makepkginfo to a
+    file.'''
+    
+    ofile = '.'.join([product_id, 'plist'])
+    with open(ofile, 'w') as out:
+        out.write(pkginfo_output)
+    
+
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('ifile', help='A file containing the the output of \'repoutil --list-branch [branch]\'')
+    parser.add_argument('--catalog', default=['testing'], action='append')
+    parser.add_argument('--displayname', default='')
+    parser.add_argument('--RestartAction', default='None')
+    parser.add_argument('--description', default='')
+    parser.add_argument('--blocking_application', default=[], action='append')
+    parser.add_argument('--force_install_after_date', default='')
+    parser.add_argument('--unattended_install', default=True, action='store_true')
+    args = parser.parse_args()
+
+    with open(args.ifile, 'r') as ifile:
+        for line in ifile:
+            product_id = get_product_id(line)
+            product_info = get_product_info(product_id)
+            args_list = product_info_to_args(product_info)
+            result = call_subprocess(args_list)
+            write_pkginfo(product_id, result['stdout'])
