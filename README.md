@@ -9,9 +9,9 @@ Usage:
 
 input_list should be a file looking like:
 
-031-17163
-031-13757
-031-17882
+031-17163<br/>
+031-13757<br/>
+031-17882<br/>
 ...
 
 Don't forget to makecatalogs!
