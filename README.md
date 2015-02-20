@@ -10,11 +10,8 @@ Usage:
 input_list should be a file looking like:
 
 031-17163
-
 031-13757
-
 031-17882
-
 ...
 
 Don't forget to makecatalogs!
