@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('ifile', help='A file containing the the output of \'repoutil --list-branch [branch]\'')
-    parser.add_argument('--catalog', default=['testing'], action='append')
+    parser.add_argument('--catalog', default=[], action='append')
     parser.add_argument('--displayname', default='')
     parser.add_argument('--RestartAction', default='None')
     parser.add_argument('--description', default='')
