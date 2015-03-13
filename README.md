@@ -20,3 +20,14 @@ input_list should be a file looking like:
 ...
 
 Don't forget to makecatalogs!
+
+# munkicatman.py
+
+Adds or removes catalogs from a munki pkginfo.
+
+Usage:
+sudo ./munkicatman.py --add production munki_package_name-1.0.plist
+sudo ./munkicatman.py --rm testing munki_package_name-1.0.plist
+
+Caveat:
+Munki's repo configuration is in the user's ~/Library/Preferences.
