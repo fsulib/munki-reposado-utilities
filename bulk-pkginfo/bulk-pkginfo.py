@@ -87,6 +87,9 @@ def product_info_to_args(product_info):
             else:
                 args_list.append("--{}".format(k))
                 continue
+        if 'force_install_after_date' in k:
+            args_list.append("--{}={}".format(k, v))
+            continue
         args_list.append("--{}={}".format(k, v))
     return args_list
 
