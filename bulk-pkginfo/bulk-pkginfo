@@ -40,6 +40,15 @@ def product_info_to_dict(product_info):
     info_dict = dict(split_array)
     return info_dict
 
+def remove_config_data(prod_id):
+    '''Allow softwareupdate to see and install
+    XProtect and Gatekeeper packages by calling
+    'repoutil --remove-config-info' on suitable
+    product ids.'''
+    
+    args_list = [REPOUTIL, '--remove-config-data', prod_id]
+    result = call_subprocess(args_list)
+    print "exit code was: %d" % (result.get('exit_code'),)
 
 def product_info_to_args(product_info):
     '''Turn a product info string into a list of
@@ -47,7 +56,14 @@ def product_info_to_args(product_info):
     
     info_dict = product_info_to_dict(product_info)
     args_dict = args.__dict__
-    
+
+    hidden_packages = ('XProtect', 'Gatekeeper')
+    for p in hidden_packages:
+        if p in info_dict.get('Title', None):
+            remove_config_data(
+                    info_dict.get('Product', None)
+            break
+            
     restart = info_dict.get('RestartNeeded', 'No')
     if 'Yes' in restart:
         args_dict['RestartAction'] = 'RequireRestart'
@@ -149,3 +165,4 @@ if __name__ == "__main__":
             args_list = product_info_to_args(product_info)
             result = call_subprocess(args_list)
             write_pkginfo(product_id, result['stdout'])
+    ifile.close()
