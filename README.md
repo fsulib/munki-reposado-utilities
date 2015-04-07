@@ -2,15 +2,19 @@
 
 Some python scripts for manipulating munki repos and pkginfo files.
 
-# bulk-pkginfo.py
+Protip: put them somewhere in your path.
+
+# bulk-pkginfo
 
 Script that creates munki apple_update_metadata pkginfos from a list of Apple update ids. The pkginfos are output to files in the directory from which you run the script.
 
 It pulls a description and display name for each update from the output of repoutil.
 Although there are options for each of these, I haven't implemented them yet.
 
+New and improved! Automatically removes config info from Gatekeeper and XProtect updates!
+
 Usage:
-./bulk-pkginfo.py --catalog testing --catalog production --unattended_install input_list
+./bulk-pkginfo --catalog testing --catalog production --unattended_install input_list
 
 input_list should be a file looking like:
 
@@ -21,13 +25,14 @@ input_list should be a file looking like:
 
 Don't forget to makecatalogs!
 
-# munkicatman.py
+# munkicatman
 
 Adds or removes catalogs from a munki pkginfo.
 
 Usage:
-sudo ./munkicatman.py --add production munki_package_name-1.0.plist
-sudo ./munkicatman.py --rm testing munki_package_name-1.0.plist
+sudo ./munkicatman --add production munki_package_name-1.0.plist
+
+sudo ./munkicatman --rm testing munki_package_name-1.0.plist
 
 Caveat:
 Munki's repo configuration is in the user's ~/Library/Preferences.
