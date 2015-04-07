@@ -61,7 +61,8 @@ def product_info_to_args(product_info):
     for p in hidden_packages:
         if p in info_dict.get('Title', None):
             remove_config_data(
-                    info_dict.get('Product', None)
+                    info_dict.get('Product', None))
+            break
             
     restart = info_dict.get('RestartNeeded', 'No')
     if 'Yes' in restart:
