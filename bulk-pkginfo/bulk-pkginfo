@@ -62,7 +62,6 @@ def product_info_to_args(product_info):
         if p in info_dict.get('Title', None):
             remove_config_data(
                     info_dict.get('Product', None)
-            break
             
     restart = info_dict.get('RestartNeeded', 'No')
     if 'Yes' in restart:
