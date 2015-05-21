@@ -55,6 +55,7 @@ def product_info_to_args(product_info):
     arguments for makepkginfo'''
     
     info_dict = product_info_to_dict(product_info)
+    print "working info_dict: {}".format(info_dict)
     args_dict = args.__dict__
 
     hidden_packages = ('XProtect', 'Gatekeeper')
@@ -162,6 +163,12 @@ if __name__ == "__main__":
         for line in ifile:
             product_id = get_product_id(line)
             product_info = get_product_info(product_id)
+
+            if (' '.join(['No product id', product_id,'found.'])
+                in product_info.get('stdout', None)):
+                print "Skipping {}.\n{}".format(product_id, product_info.get('stdout'))
+                continue
+
             args_list = product_info_to_args(product_info)
             result = call_subprocess(args_list)
             write_pkginfo(product_id, result['stdout'])
