@@ -1,0 +1,267 @@
+#!/usr/bin/env python
+# vim: set fileencoding=utf-8 :
+
+"""
+Removes optional installs from a machine when:
+    1. perhaps you're trying to track the downloads
+       of optional packages by anonymous users (lab computers, etc)
+    2. maybe you'd like to reset a machine to its default
+       set of packages without resorting to manifest editing.
+I found it useful.
+"""
+
+import os
+import sys
+import argparse
+import subprocess
+
+sys.path.append('/usr/local/munki')
+
+from munkilib import FoundationPlist
+
+MUNKIPREFS        = os.path.join(*['/', 'Library', 'Preferences', 'ManagedInstalls.plist'])
+SELFSERVE         = os.path.join(*['manifests', 'SelfServeManifest'])
+MANINSTALLDIRKEY  = 'ManagedInstallDir'
+MANAGEDINSTALLS   = 'managed_installs'
+MANAGEDUNINSTALLS = 'managed_uninstalls'
+MSUCOMMAND        = os.path.join(*['/', 'usr', 'local', 'munki', 'managedsoftwareupdate'])
+
+class Colors(object):
+    """
+    Attention-grabbing colors for errors, successes.
+    Black-eyes and feathers-in-the-cap, so to speak.
+    """
+    HEADER    = '\033[95m'
+    OKBLUE    = '\033[94m'
+    OKGREEN   = '\033[92m'
+    WARNING   = '\033[93m'
+    FAIL      = '\033[91m'
+    ENDC      = '\033[0m'
+    BOLD      = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+    def __init__(self):
+        pass
+
+    def __repr__(self):
+        print "ASCII colors for output."
+
+    @classmethod
+    def list(cls):
+        """
+        List available color names.
+        """
+        print "{}HEADER{}".format(cls.HEADER, cls.ENDC)
+
+    @classmethod
+    def error(cls, string):
+        """
+        Display a string in red.
+        """
+        return "{}{}{}".format(cls.FAIL, string, cls.ENDC)
+
+
+def call_subprocess(args_list):
+    '''Calls subprocess.Popen(args_list) and
+    returns a dict of the exit code and results.'''
+
+    sub_p = subprocess.Popen(args_list,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+    stdout, stderr = sub_p.communicate()
+    exit_code = sub_p.returncode
+
+    return {
+        'stdout'    : stdout,
+        'stderr'    : stderr,
+        'exit_code' : exit_code
+    }
+
+def exit_with_error(err):
+    """
+    Print the error and exit.
+    """
+    e_type = getattr(err, '__doc__', 'No type description available')
+    print ("{}{}The program encountered an error and cannot continue:{}"
+           .format(Colors.FAIL, Colors.BOLD, Colors.ENDC))
+    print "{}: {}".format(e_type, err)
+    sys.exit(1)
+
+def intersect(list_a, list_b):
+    """
+    Return the intersection of two lists as
+    a list.
+    """
+    return list(set(list_a)&set(list_b))
+
+def get_managed_installs_dir(prefs_path):
+    """
+    Return the location of the Managed Installs directory.
+    """
+    try:
+        prefs_dict = FoundationPlist.readPlist(prefs_path)
+        managed_installs = prefs_dict[MANINSTALLDIRKEY]
+    except FoundationPlist.NSPropertyListSerializationException as err:
+        exit_with_error(err)
+    except KeyError as err:
+        exit_with_error(err)
+
+    return managed_installs
+
+def load_self_serve_manifest(man_inst_dir):
+    """
+    Load and return the SelfServeManifest plist
+    as a FoundationPlist.
+    """
+    manifest_location = os.path.join(*[man_inst_dir, SELFSERVE])
+    try:
+        manifest = FoundationPlist.readPlist(manifest_location)
+    except FoundationPlist.NSPropertyListSerializationException as err:
+        exit_with_error(err)
+
+    return manifest
+
+def get_removal_items(manifest, items):
+    """
+    Return the intersection of what we have installed
+    with what we want uninstalled.
+    """
+    try:
+        pkgs = manifest[MANAGEDINSTALLS]
+    except KeyError as err:
+        exit_with_error(err)
+
+    try:
+        removal_items = intersect(pkgs, items)
+    except TypeError as err:
+        if not items:
+            err = Exception('Please check your commandline arguments: {}'
+                            .format(items))
+            err.__doc__ = 'Arguments error'
+            exit_with_error(err)
+        removal_items = pkgs
+
+    return removal_items
+
+def get_keep_list(manifest, removal_items):
+    """
+    Returns a list of the Self Serve installs we
+    want to keep.
+    """
+    try:
+        pkgs = manifest[MANAGEDINSTALLS]
+    except KeyError as err:
+        exit_with_error(err)
+
+    return list(set(pkgs)-set(removal_items))
+
+def get_discard_list(manifest, removal_items):
+    """
+    Returns the union of removal_items with
+    items already in the Self Serve UNinstalls.
+    """
+    try:
+        pkgs = manifest[MANAGEDUNINSTALLS]
+    except KeyError as err:
+        exit_with_error(err)
+
+    return list(set(pkgs).union(set(removal_items)))
+
+def generate_new_manifest(removal_items, purge=False):
+    """
+    Returns a dict that reflects the changes
+    we want to make to the machine's Self Serve packages.
+    """
+    managed_installs_dir = get_managed_installs_dir(MUNKIPREFS)
+    current_manifest = load_self_serve_manifest(managed_installs_dir)
+    removal_items = get_removal_items(current_manifest, removal_items)
+    keep_list = get_keep_list(current_manifest, removal_items)
+
+    if purge:
+        discard_list = []
+    else:
+        discard_list = get_discard_list(current_manifest, removal_items)
+
+    new_manifest = {}
+
+    try:
+        new_manifest[MANAGEDINSTALLS] = keep_list
+        new_manifest[MANAGEDUNINSTALLS] = discard_list
+    except KeyError as err:
+        exit_with_error(err)
+
+    return new_manifest
+
+def write_new_manifest(manifest):
+    """
+    Write a SelfServeManifest
+    """
+    managed_installs_dir = get_managed_installs_dir(MUNKIPREFS)
+    manifest_path = os.path.join(managed_installs_dir, SELFSERVE)
+
+    try:
+        FoundationPlist.writePlist(manifest, manifest_path)
+    except FoundationPlist.NSPropertyListWriteException as err:
+        exit_with_error(err)
+
+    return None
+
+def force_munki_run():
+    """
+    Run managedsoftwareupdate --installonly
+    Return the results.
+    """
+    args = [MSUCOMMAND, '--checkonly']
+    result = call_subprocess(args)
+    if result['exit_code']:
+        err = Exception(result['stderr'])
+        err.__doc__ = "managedsoftwareupdate error"
+        exit_with_error(err)
+    else:
+        args = [MSUCOMMAND, '--installonly']
+        result = call_subprocess(args)
+        if result['exit_code']:
+            err = Exception(result['stderr'])
+            err.__doc__ = "managedsoftwareupdate error"
+            exit_with_error(err)
+        else:
+            return None
+
+def main():
+    """
+    Parse arguments and invoke the script's functions.
+    Munki will remove the optional installs specified
+    on the command line.
+    """
+    parser = argparse.ArgumentParser(
+        description='''Uninstall all or a selection of
+                       a client\'s optional packages.''')
+    arg_group = parser.add_mutually_exclusive_group()
+    arg_group.add_argument('--all', action="store_true", help=
+                           'Remove ALL optional packages.')
+    arg_group.add_argument('--rm', nargs='+', help=
+                           'Remove one or more packages by name.')
+
+    if os.geteuid():
+        err = Exception('You must run this utility as root')
+        err.__doc__ = 'Authorization Denied'
+        exit_with_error(err)
+
+    try:
+        args = parser.parse_args()
+    except argparse.ArgumentError as err:
+        exit_with_error(err)
+
+    manifest = generate_new_manifest((args.rm or args.all))
+    write_new_manifest(manifest)
+    force_munki_run()
+
+    # reset the SELFSERVE['managed_uninstalls'] to []
+    new_manifest = generate_new_manifest([], purge=True)
+    write_new_manifest(new_manifest)
+
+    print "{}\nDone!\n{}".format(Colors.OKGREEN, Colors.ENDC)
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
